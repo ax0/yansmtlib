@@ -1,0 +1,8 @@
+[package]
+name = "smt_noir"
+type = "lib"
+authors = ["Ahmad"]
+compiler_version = ">=0.22.0"
+license = "GPL-3.0-only"
+
+[dependencies]

@@ -1,0 +1,9 @@
+[workspace]
+members = [
+	"lib",
+	"examples/inclusion_example",
+	"examples/deletion_example",
+	"examples/insertion_example",
+	"examples/update_example"
+]
+default-member = "lib"
