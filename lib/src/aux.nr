@@ -10,19 +10,6 @@ pub(crate) fn foldr<B,C,N>(f: fn(B,C) -> C, c: C, bs: [B; N]) -> C
     acc
 }
 
-// scanr without the initial argument
-pub(crate) fn scanr<B,C,N>(f: fn(B,C) -> C, c: C, bs: [B; N]) -> [C; N]
-{
-    let mut out = [f(bs[N - 1], c); N];
-
-    for i in 1..N
-    {
-        out[N - 1 - i] = f(bs[N - 1 - i], out[N - i]);
-    }
-
-    out
-}
-
 pub(crate) fn zip<X, Y, N>(xs: [X; N], ys: [Y; N]) -> [(X, Y); N]
 {
     let mut out = [(xs[0], ys[0]); N];

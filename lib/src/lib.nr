@@ -1,6 +1,6 @@
 mod aux;
 
-use aux::{foldr, key_to_bits, scanr, zip, zip3};
+use aux::{foldr, key_to_bits, zip, zip3};
 use dep::std::cmp::Eq;
 
 /// Enum for tree processing operations together with useful predicates
@@ -174,10 +174,6 @@ impl<DEPTH> SMTProof<DEPTH>
 
         let mut loop = true;
 
-        // For an insertion, we will need to account for a subtree sibling
-        let params = zip3(self.siblings, key_bits, self.bitmap());
-        let mut hash_scan = scanr(hash_comp, leaf_hash, params);
-        
         // Add/delete (op_key, op_value) in case of insertion/deletion
         if !op_upd
         {
@@ -188,9 +184,13 @@ impl<DEPTH> SMTProof<DEPTH>
                     if key_bits[i] != op_key_bits[i]
                     {
                         assert(!op_del | (self.siblings[i] == hash_leaf(op_key, op_value)), "The given proof does not contain the key-value pair to be deleted as a sibling.");
-                        self.siblings[i] = if op_del { 0 } else { hash_scan[i] };
+                        self.siblings[i] = if op_del { 0 } else { leaf_hash };
                         loop = false;
                     }
+                }
+                else if !op_del
+                {
+                    assert(self.siblings[i] == 0, "The exclusion proof given should lead to a leaf at a level less than or equal to that of the key to be inserted.");
                 }
             }
         }
@@ -250,8 +250,7 @@ fn hash_comp(cur_params: (Field, u1, Field), cur_hash: Field) -> Field
     let (sibling, key_bit, node_bit) = cur_params;
 
     // Swap left and right if bit is 1
-    let l = (1 - key_bit as Field)*cur_hash + (key_bit as Field)*sibling;
-    let r = (1 - key_bit as Field)*sibling + (key_bit as Field)*cur_hash;
+    let (l,r) = if key_bit == 1 { (sibling, cur_hash) } else { (cur_hash, sibling) };
     
     node_bit*hash_branch(l,r) + (1 - node_bit)*cur_hash
 }
@@ -330,6 +329,8 @@ fn insertion_test()
     let new_root = 12969130658784983238190929361355671504677343582636515678221303782186445329124;
 
     assert(proof.insert_and_compute_root(new_key, new_value, root) == new_root);
+
+    // Suppose the tree contains
 }
 
 #[test]
