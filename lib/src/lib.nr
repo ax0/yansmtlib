@@ -1,6 +1,6 @@
 mod aux;
 
-use aux::{foldr, key_to_bits};
+use aux::{foldr, key_to_bits, scanr, zip, zip3};
 use dep::std::cmp::Eq;
 
 /// Enum for tree processing operations together with useful predicates
@@ -55,10 +55,10 @@ impl<DEPTH> SMTProof<DEPTH>
         }
     }
 
-    /// Empty SMT proof constructor
-    pub fn empty() -> Self
+    /// Empty SMT proof for a key
+    pub fn empty(key: Field) -> Self
     {
-        SMTProof::new(true, 0, 0, [0; DEPTH])
+        SMTProof::new(true, key, 0, [0; DEPTH])
     }
 
     
@@ -91,13 +91,8 @@ impl<DEPTH> SMTProof<DEPTH>
 
         let leaf_hash = if self.empty_leaf { 0 } else { hash_leaf(self.key, self.value) };
 
-        let mut params: [(Field, u1, Field); DEPTH] = [(0,0,0); DEPTH];
-
-        for i in 0..DEPTH
-        {
-            params[i] = (self.siblings[i], key_bits[i], node_bitmap[i]);
-        }
-
+        let params = zip3(self.siblings, key_bits, node_bitmap);
+        
         foldr(hash_comp, leaf_hash, params)
     }
 
@@ -119,22 +114,20 @@ impl<DEPTH> SMTProof<DEPTH>
         if !inclusion
         {
             // Follow the siblings to the first unequal bit in the case of an indirect exclusion proof
-            let mut key_bits_eq = !self.empty_leaf;
+            let comp = zip(key_bits, excluded_key_bits)
+                .fold(
+                    (0, !self.empty_leaf),
+                    |acc: (Field, bool), bit_pair: (u1, u1)| {
+                        let (i, key_bits_eq) = acc;
+                        (i + 1,
+                         if key_bits_eq & (bit_pair.0 != bit_pair.1) {
+                             assert(self.siblings[i] == 0, "For a key to be excluded, its leaf must be empty.");
+                             false
+                         } else { key_bits_eq })
+                    });
             
-            // Check that excluded_key and key agree up to the (potentially) empty leaf corresponding to `key` in the tree
-            for i in 0..DEPTH
-            {
-                if key_bits_eq
-                {
-                    if key_bits[i] != excluded_key_bits[i]
-                    {
-                        // Empty node where `excluded_key` should be.
-                        assert(self.siblings[i] == 0, "For a key to be excluded, its leaf must be empty.");
-                        key_bits_eq = false;
-                    }
-                }
-            }
-
+            let key_bits_eq = comp.1;
+            
             assert(!key_bits_eq, "The keys must either differ or the proof should resolve the excluded key to the empty leaf.");
         }
 
@@ -174,14 +167,17 @@ impl<DEPTH> SMTProof<DEPTH>
         // of `(key, value)`.
         assert(self.verify_membership(!op_ins, if op_ins { op_key } else { 0 }, root), "The given proof is invalid.");
 
-        let leaf_hash = if op_del { 0 } else { hash_leaf(self.key, self.value) };
+        let leaf_hash = hash_leaf(self.key, self.value);
 
         let key_bits: [u1; DEPTH] = key_to_bits(self.key);
         let op_key_bits: [u1; DEPTH] = key_to_bits(op_key);
 
-        // TODO
-        let mut loop = !self.empty_leaf;
+        let mut loop = true;
 
+        // For an insertion, we will need to account for a subtree sibling
+        let params = zip3(self.siblings, key_bits, self.bitmap());
+        let mut hash_scan = scanr(hash_comp, leaf_hash, params);
+        
         // Add/delete (op_key, op_value) in case of insertion/deletion
         if !op_upd
         {
@@ -192,7 +188,7 @@ impl<DEPTH> SMTProof<DEPTH>
                     if key_bits[i] != op_key_bits[i]
                     {
                         assert(!op_del | (self.siblings[i] == hash_leaf(op_key, op_value)), "The given proof does not contain the key-value pair to be deleted as a sibling.");
-                        self.siblings[i] = leaf_hash;
+                        self.siblings[i] = if op_del { 0 } else { hash_scan[i] };
                         loop = false;
                     }
                 }
@@ -203,7 +199,7 @@ impl<DEPTH> SMTProof<DEPTH>
         // containing the key to be deleted.
         assert(!op_del | self.bitmap().eq([0; DEPTH]) | !loop);
         
-        // In case of deletion, loop will remain true if the tree consists of a singleton `(key,value)`, in which case
+        // In case of deletion, `loop` will remain true if the tree consists of a singleton `(key,value)`, in which case
         // the new tree will be empty.
         let proc_proof = SMTProof::new(op_del & loop, if op_del { self.key } else { op_key }, if op_del { self.value } else { op_value }, self.siblings);
         proc_proof
@@ -293,7 +289,7 @@ fn exclusion_tests()
     assert(proof.verify_exclusion(excluded_key, root));
 
     let root = 0;
-    let proof: SMTProof<2> = SMTProof::empty();
+    let proof: SMTProof<2> = SMTProof::empty(0);
 
     assert(proof.verify_exclusion(excluded_key, root));
     
@@ -309,7 +305,7 @@ fn exclusion_tests()
 fn insertion_test()
 {
     // Start with an empty tree of max depth 3 to which we add (1, 10)
-    let proof: SMTProof<3> = SMTProof::empty();
+    let proof: SMTProof<3> = SMTProof::empty(1);
     let new_key = 1;
     let new_value = 10;
     let root = 0;
@@ -370,7 +366,7 @@ fn deletion_test()
     assert(proof.delete_and_compute_root(deleted_key, deleted_value, old_root) == new_root);
 
     // And finally delete (1,10):
-    let proof: SMTProof<3> = SMTProof::empty();
+    let proof: SMTProof<3> = SMTProof::empty(1);
     let old_root = new_root;
     let new_root = 0;
     let deleted_key = 1;
@@ -412,7 +408,7 @@ fn inclusion_test()
 #[test]
 fn no_sibling_indicator_test()
 {
-    let empty_proof: SMTProof<10> = SMTProof::empty();
+    let empty_proof: SMTProof<10> = SMTProof::empty(0);
     assert(empty_proof.bitmap() == [0; 10]);
 }
 
