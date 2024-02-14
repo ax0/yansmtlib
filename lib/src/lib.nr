@@ -89,7 +89,7 @@ impl<DEPTH> SMTProof<DEPTH>
         // Non-empty node bitmap
         let node_bitmap = self.bitmap();
 
-        let leaf_hash = if self.empty_leaf { 0 } else { hash_leaf(self.key, self.value) };
+        let leaf_hash = hash_leaf(self.empty_leaf, self.key, self.value);
 
         let params = zip3(self.siblings, key_bits, node_bitmap);
         
@@ -167,7 +167,7 @@ impl<DEPTH> SMTProof<DEPTH>
         // of `(key, value)`.
         assert(self.verify_membership(!op_ins, if op_ins { op_key } else { 0 }, root), "The given proof is invalid.");
 
-        let leaf_hash = hash_leaf(self.key, self.value);
+        let leaf_hash = hash_leaf(self.empty_leaf, self.key, self.value);
 
         let key_bits: [u1; DEPTH] = key_to_bits(self.key);
         let op_key_bits: [u1; DEPTH] = key_to_bits(op_key);
@@ -183,7 +183,7 @@ impl<DEPTH> SMTProof<DEPTH>
                 {
                     if key_bits[i] != op_key_bits[i]
                     {
-                        assert(!op_del | (self.siblings[i] == hash_leaf(op_key, op_value)), "The given proof does not contain the key-value pair to be deleted as a sibling.");
+                        assert(!op_del | (self.siblings[i] == hash_leaf(false, op_key, op_value)), "The given proof does not contain the key-value pair to be deleted as a sibling.");
                         self.siblings[i] = if op_del { 0 } else { leaf_hash };
                         loop = false;
                     }
@@ -234,9 +234,9 @@ impl<DEPTH> SMTProof<DEPTH>
 
 /// Leaf hasher
 #[field(bn254)]
-fn hash_leaf(key: Field, value: Field) -> Field
+fn hash_leaf(empty_leaf: bool, key: Field, value: Field) -> Field
 {
-    dep::std::hash::poseidon::bn254::hash_3([key, value, 1])
+    (1 - empty_leaf as Field) * dep::std::hash::poseidon::bn254::hash_3([key, value, 1])
 }
 
 #[field(bn254)]
@@ -298,13 +298,27 @@ fn exclusion_tests()
 
     assert(proof.verify_exclusion(3, root));
 
+    // Start with a prepopulated tree of max depth 3 containing [(2,10), (5,20), (1,10)] and prove that 0 is not in the tree
+    let root = 12969130658784983238190929361355671504677343582636515678221303782186445329124;
+    let proof = SMTProof::new(false, 2, 10, [2996922252417443465966018502620271371886265112327727499202960396308391015872, 0, 0]);
+    assert(proof.verify_exclusion(0, root));
+
+    // Remove (2,10) and prove that 0 is not in the tree
+    let root = 18508676215879297097623875026733409214533276976775300711445773127911914420383;
+    let proof = SMTProof::new(true, 0, 0, [2996922252417443465966018502620271371886265112327727499202960396308391015872, 0, 0]);
+    assert(proof.verify_exclusion(0, root));
+
+    // Technically the key in the proof doesn't matter as long as it resolves properly. For example:
+    let proof = SMTProof::new(true, 2, 0, [2996922252417443465966018502620271371886265112327727499202960396308391015872, 0, 0]);
+    assert(proof.verify_exclusion(0, root));
+
 }
 
 #[test]
 fn insertion_test()
 {
     // Start with an empty tree of max depth 3 to which we add (1, 10)
-    let proof: SMTProof<3> = SMTProof::empty(1);
+    let proof: SMTProof<3> = SMTProof::empty(0);
     let new_key = 1;
     let new_value = 10;
     let root = 0;
@@ -349,9 +363,8 @@ fn deletion_test()
     proof.verify_deletion(deleted_key, deleted_value, new_root, old_root);
 
     // Alternatively, delete (2,10) and check that we get the same result. Use the proof for (5,20):
-    let proof = SMTProof::new(false, 5, 20, [hash_leaf(2,10), 0x00, 0x273b79dd2dbb4163ccbee92a259242d3d728b787e5cb5b69e45509c6b8b6a19c]);
+    let proof = SMTProof::new(false, 5, 20, [hash_leaf(false, 2, 10), 0x00, 0x273b79dd2dbb4163ccbee92a259242d3d728b787e5cb5b69e45509c6b8b6a19c]);
     assert(proof.delete_and_compute_root(deleted_key, deleted_value, old_root) == new_root);
-    dep::std::println(hash_leaf(2,10));
     
     // Now delete (5,20)
     let old_root = new_root;
@@ -363,7 +376,7 @@ fn deletion_test()
     proof.verify_deletion(deleted_key, deleted_value, new_root, old_root);
 
     // Again, using the alternative approach, this time using the proof for (1,10):
-    let proof = SMTProof::new(false, 1, 10, [0, 0, hash_leaf(5,20)]);
+    let proof = SMTProof::new(false, 1, 10, [0, 0, hash_leaf(false, 5, 20)]);
     assert(proof.delete_and_compute_root(deleted_key, deleted_value, old_root) == new_root);
 
     // And finally delete (1,10):
