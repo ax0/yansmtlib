@@ -1,5 +1,5 @@
 [package]
-name = "smt_noir"
+name = "yansmtlib"
 type = "lib"
 authors = ["Ahmad"]
 compiler_version = ">=0.22.0"
