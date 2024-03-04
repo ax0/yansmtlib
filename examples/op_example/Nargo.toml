@@ -5,4 +5,4 @@ authors = [""]
 compiler_version = ">=0.23.0"
 
 [dependencies]
-smt = { git="https://github.com/ax0/yansmtlib", tag="master", directory="lib" }
+smt = { path = "../../lib" }

@@ -1,4 +1,4 @@
-pub(crate) fn foldr<B,C,N>(f: fn(B,C) -> C, c: C, bs: [B; N]) -> C
+pub(crate) fn foldr<Env, B,C,N>(f: fn[Env](B,C) -> C, c: C, bs: [B; N]) -> C
 {
     let mut acc = c;
 

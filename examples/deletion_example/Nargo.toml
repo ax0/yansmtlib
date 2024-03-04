@@ -5,4 +5,4 @@ authors = [""]
 compiler_version = ">=0.23.0"
 
 [dependencies]
-smt_noir = { path = "../../lib" }
+smt = { path = "../../lib" }
