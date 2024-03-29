@@ -146,11 +146,12 @@ impl<Key, Value, HashValue, DEPTH> SMT<Key, Value, HashValue, DEPTH>
             let comp = zip(key_bits, excluded_key_bits)
                 .fold(
                     (0, !proof.empty_leaf),
-                    |acc: (Field, bool), bit_pair: (u1, u1)| {
+                    |acc: (Field, bool), bit_pair: (u1, u1)|
+                    {
                         let (i, key_bits_eq) = acc;
                         (i + 1,
                          if key_bits_eq & (bit_pair.0 != bit_pair.1) {
-                             assert(val_eq(proof.siblings[i], self.default_value), "For a key to be excluded, its leaf must be empty.");
+                             assert(val_eq(proof.siblings[i], self.default_value), "Expected an empty leaf.");
                              false
                          } else { key_bits_eq })
                     });
@@ -199,7 +200,7 @@ impl<Key, Value, HashValue, DEPTH> SMT<Key, Value, HashValue, DEPTH>
         // Depending on `op`, check for inclusion/exclusion of (op_key, op_value)
         // For insertions, check for exclusion of `op_key`, else check for inclusion
         // of `(key, value)`.
-        assert(self.verify_membership(proof, !op_ins, if op_ins { op_key } else { zeroed() }, root), "The given proof is invalid.");
+        assert(self.verify_membership(proof, op_upd | (op_del & !proof.empty_leaf), if op_ins { op_key } else { zeroed() }, root), "The given proof is invalid.");
 
         let leaf_hash = hash_leaf(proof.empty_leaf, proof.key, proof.value);
 
